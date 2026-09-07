@@ -128,36 +128,60 @@ extraction with a character count rather than the 2 MiB response byte cap.
 
 ## Open work
 
-### T12 · `partial` over-reports on the ordinary search path — **open**
+### T12 · `partial` over-reported on the ordinary search path — ✅ **done**
 
-Confirmed on 2026-09-07 from an ORIS evaluation observation. A plain search
-returned `partial: true` alongside a full set of results, while a news search
-returned `partial: false`.
+Found on 2026-09-07 from an ORIS evaluation observation: a plain search returned
+`partial: true` alongside a full set of results, while a news search returned
+`partial: false`.
 
-`searxng._normalize` validates every result in the payload, and SearXNG returns
-far more than `max_results`. A malformed entry beyond the requested limit is
-counted as rejected even though it would never have been returned, so `partial`
-reports a loss the consumer did not suffer. Firecrawl does not show this because
-`limit` is sent upstream and the payload is already about the right size.
+`_normalize` validated every result in the payload, and SearXNG returns far more
+than `max_results`. A malformed entry beyond the requested limit was counted as
+rejected even though it would never have been returned, so `partial` reported a
+loss the caller did not suffer. Firecrawl showed it less because `limit` goes
+upstream and its payload is already about the right size.
 
-The fix is to stop scanning once enough results are collected, and to treat a
-response as partial only when an engine failed or the results actually came up
-short. Held back deliberately: ORIS has a live evaluation in flight and this
-changes what it observes.
+Both paths now stop scanning at the limit, and a response is partial only when
+the search service reported engine failures or the results genuinely came up
+short. The README says what the flag means. This is a contract change: a consumer
+that treated `partial` as "the payload contained junk" will see it far less often,
+which is the point.
 
-### T13 · News publication dates — **open**
+### T13 · News publication dates — ✅ **done**
 
-`published_at` is populated from the provider's date field and accepts ISO 8601
-only. A relative label such as "2 days ago" is reported as unknown rather than
-guessed at, and the schema now says so.
+Live probe of the configured Firecrawl account on 2026-09-07 settled all three
+parts. Nothing here was inferred from documentation.
 
-Whether Firecrawl supplies a usable date on news results is unverified. The live
-work in T7 answers it. If dates arrive in a different well-defined format, accept
-that format. If they are structurally absent, say so in the tool description
-rather than leaving a consumer to infer it from empty fields.
+**News search does carry a date, as a relative label.** Items come back with
+`date` set to `'1 day ago'`, `'3 days ago'`, `'59 minutes ago'`. `publication_date`
+accepted ISO 8601 only, so every one became null. The information was arriving and
+being discarded, which is why date coverage on news was zero.
 
-Page retrieval carries `retrieved_at` but nothing about publication. Surfacing a
-publication date from the document itself is a candidate, not committed work.
+Relative labels now resolve against the injected clock. Sub-day labels keep their
+time, a day or coarser resolves to a date, because that is all the label claims.
+Months and years are approximated at 30 and 365 days and the field description
+says a resolved date is accurate to the unit stated rather than exact. An
+unrecognised label is still reported as unknown rather than guessed at.
+
+Verified live after the change: 5 of 5 news results carried a date, up from 0.
+`tests/test_live.py` holds a `--live` test asserting that property, so a provider
+change that empties the field again fails loudly instead of going quiet.
+
+**Filtered and general web search carry no date at all.** Items have only
+`description`, `position`, `title` and `url`. Structurally absent, now said plainly
+in the README rather than left for a consumer to infer from empty fields.
+
+**Ordinary SearXNG search** supplies real ISO dates on roughly a fifth of results.
+That path already worked and is unchanged.
+
+**A publication date from page retrieval is closed as won't-do.** Firecrawl's
+scrape metadata has no publication field of any kind, and `onlyMainContent: true`
+strips the head entirely: no `<head>`, no `<meta>`, no JSON-LD in the returned
+HTML. There is nothing to parse. Getting one would mean `onlyMainContent: false`,
+which pulls navigation and footer text into the bounded character budget on every
+retrieval, to serve a date most pages do not publish. The cost lands on every call
+and the benefit is occasional.
+
+---
 
 ### T7 · Live Firecrawl verification — **open**
 
@@ -194,7 +218,9 @@ Ideas kept for later evaluation. None is approved.
 - **Language filtering** on search, if real usage needs it.
 - **Usage safeguards.** Operator-set request allowances and rate-limit cooldowns,
   without automatic retries or fallback. Daily limits would need to survive a
-  restart.
+  restart. The 2026-09-07 probe found that Firecrawl reports `creditsUsed` on a
+  scrape response, so spend could be tracked from what the provider already tells
+  us rather than counted locally.
 - **Local source ingestion.** Accept PDFs, manuals and saved offline content,
   store them as a source collection, and make them retrievable through MCP.
   Ownership, storage and retrieval design are all undecided, and it needs its own

@@ -104,7 +104,11 @@ because egress is disabled in that state.
 - Search accepts up to ten domain restrictions, a relative day/week/month/year, or
   paired ISO dates (start inclusive, end exclusive). Relative and absolute periods
   cannot be combined. Dates constrain the hosted search; they are not verified
-  publication dates. Missing or relative publication labels remain unknown.
+  publication dates. `published_at` uses the provider's own date where there is one.
+  News recency arrives as a relative label and is resolved against the retrieval
+  time, so it is accurate to the unit stated rather than exact. It is null when the
+  provider supplies nothing, which is common: ordinary search carries a date on
+  roughly a fifth of results, and filtered non-news search carries none at all.
 - Retrieval supports public HTTP port 80 and HTTPS port 443, HTML and plain text only.
   It preflights DNS but does not connect to page servers locally. Hosted redirects
   remain the provider's responsibility. A final URL is provider-reported, or null.
@@ -113,8 +117,11 @@ because egress is disabled in that state.
   SearXNG 15 seconds; hosted request 25; individual retrieval 40; batch 180.
   Already completed pages survive a batch deadline. Response caps are 1 MiB for
   SearXNG and 2 MiB for hosted requests, including decompressed data.
-- Empty results are valid. `partial=true` indicates rejected entries or reported upstream
-  failures. Errors contain `call_id`, `code`, `message`, and `retryable`; retries are never automatic.
+- Empty results are valid. `partial=true` means the response is short of what you asked
+  for: entries were rejected and could not be replaced, or the search service reported
+  engine failures. Malformed entries beyond your requested limit cost you nothing and do
+  not set it. On a retrieval batch it means at least one page failed.
+  Errors contain `call_id`, `code`, `message`, and `retryable`; retries are never automatic.
 - `not_configured`: check configuration and permissions. `access_denied`: check instance
   access and JSON support. `busy`: another tool call is active in this process.
   `engines_unavailable`: zero usable results with reported engine failures; audit

@@ -124,10 +124,16 @@ async def search(
     request: SearchRequest,
     audit: AuditWriter,
     call_id: UUID,
+    clock: Clock,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> SearchBatch:
-    """Send filter intent once; search dates are provider constraints, not verified facts."""
+    """Send filter intent once; search dates are provider constraints, not verified facts.
+
+    News results carry a relative label rather than a date, so the clock resolves
+    it here. Web results carry no date at all.
+    """
+    now = clock.now()
     source = "news" if request.search_category == "news" else "web"
     payload = {
         "query": request.query,
@@ -150,6 +156,8 @@ async def search(
     results = []
     rejected = 0
     for item in raw_results:
+        if len(results) >= request.max_results:
+            break
         if not isinstance(item, dict) or not valid_web_url(item.get("url")):
             rejected += 1
             continue
@@ -164,19 +172,21 @@ async def search(
             rejected += 1
             continue
         snippet = item.get("snippet" if source == "news" else "description")
-        if len(results) < request.max_results:
-            results.append(
-                SearchItem(
-                    title=title,
-                    url=item["url"],
-                    snippet=plain_text(snippet, 1000) or None if isinstance(snippet, str) else None,
-                    published_at=publication_date(item.get("date")),
-                )
+        results.append(
+            SearchItem(
+                title=title,
+                url=item["url"],
+                snippet=plain_text(snippet, 1000) or None if isinstance(snippet, str) else None,
+                published_at=publication_date(item.get("date"), now=now),
             )
+        )
     audit.emit("normalized", str(call_id), result_count=len(results), rejected_count=rejected)
     if not results and (rejected or warned):
         raise SearchError(ErrorCode.UPSTREAM_UNAVAILABLE)
-    return SearchBatch(results, partial=bool(rejected or warned))
+    return SearchBatch(
+        results,
+        partial=bool(warned) or (bool(rejected) and len(results) < request.max_results),
+    )
 
 
 async def get_page(

@@ -2,7 +2,7 @@
 
 import re
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from html.parser import HTMLParser
 from typing import Literal
@@ -146,9 +146,11 @@ class SearchItem(Contract):
         default=None,
         max_length=40,
         description=(
-            "ISO 8601, when the provider supplies a date. Null when it supplies none, "
-            "or a relative label such as '2 days ago', which is reported as unknown "
-            "rather than guessed at. Never treat null as recent or old."
+            "ISO 8601. Taken from the provider's own date where it gives one. Where it "
+            "reports recency as a relative label such as '3 days ago', that is resolved "
+            "against the retrieval time, so it is accurate to the unit stated rather "
+            "than exact. Null when the provider supplies nothing usable, which is "
+            "common. Never read null as recent or old."
         ),
     )
 
@@ -242,20 +244,50 @@ def valid_web_url(value: object) -> bool:
     return True
 
 
-def publication_date(value: object) -> str | None:
+_RELATIVE = re.compile(r"(\d{1,3})\s+(minute|hour|day|week|month|year)s?\s+ago")
+_UNITS = {
+    "minute": timedelta(minutes=1),
+    "hour": timedelta(hours=1),
+    "day": timedelta(days=1),
+    "week": timedelta(days=7),
+    # Calendar months and years vary. These are approximations, and the field
+    # description says a date derived from a label is accurate to its unit.
+    "month": timedelta(days=30),
+    "year": timedelta(days=365),
+}
+
+
+def publication_date(value: object, *, now: datetime | None = None) -> str | None:
     """Normalize an upstream publication label, or report it as unknown.
 
-    Providers disagree about this field and some omit it entirely. Only an ISO
-    8601 value is accepted; a relative label such as "2 days ago" is not a date
-    and is reported as unknown rather than guessed at.
+    Providers disagree about this field. Some give ISO 8601, some give a relative
+    label such as "3 days ago", and some give nothing. A relative label is
+    resolved against ``now`` when one is supplied, because dropping it would
+    throw away the only recency signal that provider offers. Anything that
+    cannot be resolved is reported as unknown rather than guessed at.
+
+    Sub-day labels keep their time; a label of a day or coarser resolves to a
+    date, because that is all it actually claims.
     """
     if not isinstance(value, str) or len(value) > 40:
         return None
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError:
+        pass
+    else:
+        return parsed.date().isoformat() if len(value) == 10 else parsed.isoformat()
+    if now is None:
         return None
-    return parsed.date().isoformat() if len(value) == 10 else parsed.isoformat()
+    label = value.strip().lower()
+    if label == "yesterday":
+        return (now - timedelta(days=1)).date().isoformat()
+    match = _RELATIVE.fullmatch(label)
+    if match is None:
+        return None
+    unit = match.group(2)
+    moment = now - _UNITS[unit] * int(match.group(1))
+    return moment.isoformat() if unit in {"minute", "hour"} else moment.date().isoformat()
 
 
 class _TextParser(HTMLParser):

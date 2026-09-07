@@ -57,14 +57,16 @@ def _normalize(payload: object, limit: int, audit: AuditWriter, call_id: UUID) -
                 failure_counts[field] += 1
                 break
     for item in payload["results"]:
+        # Anything past the limit was never going to be returned, so a malformed
+        # entry down there costs the caller nothing and must not read as a loss.
+        if len(results) >= limit:
+            break
         if not isinstance(item, dict) or not valid_web_url(item.get("url")):
             rejected += 1
             continue
         title = plain_text(item["title"], 300) if isinstance(item.get("title"), str) else ""
         if not title:
             rejected += 1
-            continue
-        if len(results) >= limit:
             continue
         content = item.get("content")
         snippet = plain_text(content, 1000) if isinstance(content, str) else None
@@ -88,7 +90,7 @@ def _normalize(payload: object, limit: int, audit: AuditWriter, call_id: UUID) -
         raise SearchError(
             ErrorCode.ENGINES_UNAVAILABLE if failures else ErrorCode.UPSTREAM_UNAVAILABLE
         )
-    return SearchBatch(results, partial=bool(rejected or failures))
+    return SearchBatch(results, partial=bool(failures) or (bool(rejected) and len(results) < limit))
 
 
 async def search(

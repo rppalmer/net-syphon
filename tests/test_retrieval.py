@@ -193,7 +193,15 @@ async def test_filtered_search_routes_once_and_validates_domains(tmp_path, monke
             },
         )
 
-    result = await SearchService(tmp_path / "private", transport=httpx.MockTransport(respond)).call(
+    from datetime import UTC, datetime
+
+    from net_syphon.clock import FixedClock
+
+    result = await SearchService(
+        tmp_path / "private",
+        transport=httpx.MockTransport(respond),
+        clock=FixedClock(datetime(2026, 9, 7, 12, 0, tzinfo=UTC)),
+    ).call(
         {
             "query": "news",
             "search_category": "news",
@@ -203,7 +211,9 @@ async def test_filtered_search_routes_once_and_validates_domains(tmp_path, monke
         }
     )
     assert result.partial and len(result.results) == 1
-    assert result.results[0].title == "Keep" and result.results[0].published_at is None
+    assert result.results[0].title == "Keep"
+    # The provider's relative label reaches the caller as a date it can compare.
+    assert result.results[0].published_at == "2026-09-07T10:00:00+00:00"
     assert len(requests) == 1
 
 
@@ -368,3 +378,41 @@ async def test_hosted_stream_limit_closes_response(tmp_path, monkeypatch):
         tmp_path / "private", transport=httpx.MockTransport(lambda r: response)
     ).call({"query": "x", "time_range": "day"})
     assert result.code.value == "too_large" and stream.closed
+
+
+@pytest.mark.asyncio
+async def test_news_relative_dates_reach_the_consumer_as_absolute_dates(tmp_path, monkeypatch):
+    """Live Firecrawl news returns labels like '1 day ago'; a consumer needs a date."""
+    from datetime import UTC, datetime
+
+    from net_syphon.clock import FixedClock
+
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "news": [
+                        {"title": "Fresh", "url": "https://a.test/", "date": "59 minutes ago"},
+                        {"title": "Older", "url": "https://b.test/", "date": "3 days ago"},
+                        {"title": "Undated", "url": "https://c.test/"},
+                    ]
+                },
+            },
+        )
+    )
+    service = SearchService(
+        tmp_path / "private",
+        transport=transport,
+        clock=FixedClock(datetime(2026, 9, 7, 12, 0, tzinfo=UTC)),
+    )
+
+    result = await service.call({"query": "ai", "search_category": "news"})
+
+    assert [item.published_at for item in result.results] == [
+        "2026-09-07T11:01:00+00:00",
+        "2026-09-04",
+        None,
+    ]

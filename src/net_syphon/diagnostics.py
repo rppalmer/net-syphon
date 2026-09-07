@@ -270,6 +270,7 @@ async def _connectivity(
                 request,
                 audit,
                 uuid4(),
+                clock,
                 transport=transport,
             )
         except SearchError as error:

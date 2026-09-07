@@ -159,6 +159,7 @@ class SearchService:
                             request,
                             self.audit,
                             call_id,
+                            self.clock,
                             transport=self.transport,
                         )
                     else:

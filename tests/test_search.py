@@ -264,3 +264,44 @@ async def test_network_failure_is_safe_and_single_attempt(tmp_path):
         await fetch(tmp_path, handler)
     assert caught.value.code == "upstream_unavailable" and len(requests) == 1
     assert "secret" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_junk_beyond_the_requested_limit_is_not_reported_as_partial(tmp_path):
+    """`partial` means the caller lost something, not that the payload had junk in it.
+
+    SearXNG returns far more results than were asked for. Malformed entries past
+    the limit were never going to be returned, so they cost the caller nothing.
+    """
+    response, _ = upstream(
+        {
+            "results": [{"title": f"Good {i}", "url": f"https://ok{i}.example/"} for i in range(5)]
+            + [
+                {"title": "Junk", "url": "javascript:alert(1)"},
+                {"title": "", "url": "https://notitle.example/"},
+            ],
+            "unresponsive_engines": [],
+        }
+    )
+    batch = await fetch(tmp_path, lambda request: response, {"query": "x", "max_results": 5})
+
+    assert len(batch.results) == 5
+    assert batch.partial is False
+
+
+@pytest.mark.asyncio
+async def test_a_genuine_shortfall_is_still_reported_as_partial(tmp_path):
+    """Rejections that leave the caller short of what it asked for still count."""
+    response, _ = upstream(
+        {
+            "results": [
+                {"title": "Good", "url": "https://ok.example/"},
+                {"title": "Junk", "url": "javascript:alert(1)"},
+            ],
+            "unresponsive_engines": [],
+        }
+    )
+    batch = await fetch(tmp_path, lambda request: response, {"query": "x", "max_results": 5})
+
+    assert len(batch.results) == 1
+    assert batch.partial is True

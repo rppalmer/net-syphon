@@ -92,3 +92,39 @@ def test_search_items_carry_no_rank_field():
     from net_syphon.contracts import SearchItem
 
     assert "rank" not in SearchItem.model_fields
+
+
+@pytest.mark.parametrize(
+    "label,expected",
+    [
+        ("59 minutes ago", "2026-09-07T11:01:00+00:00"),
+        ("2 hours ago", "2026-09-07T10:00:00+00:00"),
+        ("1 day ago", "2026-09-06"),
+        ("3 days ago", "2026-09-04"),
+        ("yesterday", "2026-09-06"),
+        ("1 week ago", "2026-08-31"),
+        # Calendar months vary, so a month is approximated and documented as such.
+        ("2 months ago", "2026-07-09"),
+        ("1 year ago", "2025-09-07"),
+    ],
+)
+def test_relative_publication_labels_resolve_against_the_clock(label, expected):
+    """News results carry labels like '1 day ago'. Dropping them loses real recency."""
+    from datetime import UTC, datetime
+
+    from net_syphon.contracts import publication_date
+
+    now = datetime(2026, 9, 7, 12, 0, tzinfo=UTC)
+    assert publication_date(label, now=now) == expected
+
+
+@pytest.mark.parametrize(
+    "label", ["", "ages ago", "soon", "1 fortnight ago", "9999 days ago", "tomorrow", "in 2 days"]
+)
+def test_unparseable_publication_labels_stay_unknown(label):
+    """A label we cannot resolve is reported as unknown rather than guessed at."""
+    from datetime import UTC, datetime
+
+    from net_syphon.contracts import publication_date
+
+    assert publication_date(label, now=datetime(2026, 9, 7, 12, 0, tzinfo=UTC)) is None
