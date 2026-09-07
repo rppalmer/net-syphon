@@ -11,15 +11,17 @@ rules, that is marked as a deviation and points at the fix.
 
 ## Shape
 
-One local Python process. No ports, no web server, no browser. One front door:
+One local Python process. No ports, no web server, no browser. Two front doors:
 
 ```
-   MCP host (stdio)
-          │
-          ▼
-     server.py                     protocol adapter —
-     2 tool definitions            no logic lives here
-          │
+   MCP host (stdio)              Terminal
+          │                          │
+          ▼                          ▼
+     server.py                    cli.py            protocol adapters —
+     2 tool definitions           doctor            no logic lives here
+          │                          │
+          │                          ▼
+          │                   diagnostics.py
           ▼
     service.py · SearchService     composition root
           │                        + the audit boundary
@@ -35,11 +37,11 @@ One local Python process. No ports, no web server, no browser. One front door:
                     clock.py
 ```
 
-There is only one adapter, and that is the point. Net-Razor also ships a CLI,
-because a person sometimes has to diagnose a server that will not start.
-Net-Syphon has no local state to inspect and no credentials of its own to check,
-so a second front door would carry no weight. If a `doctor` command is ever
-added, it becomes the second adapter and the same rule applies to it: no logic.
+The two adapters are not symmetric, and deliberately so. MCP carries the whole
+tool surface, because an agent is the intended caller. The CLI carries only
+`doctor`, because diagnosing a server that will not start is the one thing you
+cannot do through that server. Neither adapter contains fetch, parse, or audit
+logic.
 
 `create_server()` builds the whole object graph. Every tool body is a single
 delegation into `SearchService.call()`.
@@ -137,8 +139,16 @@ check that it is public, then hands the URL to the hosted provider. The DNS
 preflight is a check, not a pin: the provider resolves independently and owns
 its own redirects.
 
-**7 · The protocol adapter carries no logic.** `server.py` defines tool schemas
-and delegates. It does not validate, route, classify, or audit.
+**7 · The protocol adapters carry no logic.** `server.py` defines tool schemas
+and delegates. `cli.py` parses arguments and formats output. Neither validates,
+routes, classifies, or audits.
+
+**8 · Doctor reports; it never repairs.** `diagnostics.py` creates no file and
+no directory, and reads no audit event contents. A missing home directory or log
+is a healthy not-yet-used state, not a fault. Its connectivity checks go through
+the audit boundary like any other request, so they refuse to run when the audit
+is unwritable. A test asserts that running the checks against an absent directory
+leaves it absent.
 
 ## Audit log
 

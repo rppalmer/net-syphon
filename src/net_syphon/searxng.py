@@ -4,7 +4,6 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from uuid import UUID
 
 import httpx2 as httpx
@@ -16,6 +15,7 @@ from net_syphon.contracts import (
     SearchItem,
     SearchRequest,
     plain_text,
+    publication_date,
     valid_web_url,
 )
 
@@ -27,16 +27,6 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 class SearchBatch:
     results: list[SearchItem]
     partial: bool
-
-
-def _publication_date(value: object) -> str | None:
-    if not isinstance(value, str) or len(value) > 40:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    return parsed.date().isoformat() if len(value) == 10 else parsed.isoformat()
 
 
 def _normalize(payload: object, limit: int, audit: AuditWriter, call_id: UUID) -> SearchBatch:
@@ -83,7 +73,7 @@ def _normalize(payload: object, limit: int, audit: AuditWriter, call_id: UUID) -
                 title=title,
                 url=item["url"],
                 snippet=snippet or None,
-                published_at=_publication_date(item.get("publishedDate")),
+                published_at=publication_date(item.get("publishedDate")),
             )
         )
     audit.emit(

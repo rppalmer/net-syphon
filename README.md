@@ -90,7 +90,12 @@ Set `NET_SYPHON_FIRECRAWL_API_KEY` privately in the same protected dotenv file o
 launch environment for retrieval and filtered/news search. Missing configuration
 disables only the affected capability. No key is needed for ordinary SearXNG search.
 Use a client timeout of at least 210 seconds to accommodate a bounded batch.
-The `net-syphon` console command starts stdio transport, not an interactive CLI.
+The `net-syphon` console command starts stdio transport. Its one subcommand,
+`net-syphon doctor`, checks configuration, permissions and audit health and exits
+non-zero when something needs fixing. It creates and repairs nothing. Add
+`--connect` to make one real request per configured capability, which spends one
+hosted retrieval request. Connectivity is skipped when the audit is unwritable,
+because egress is disabled in that state.
 
 ## Operation
 

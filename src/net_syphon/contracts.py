@@ -142,7 +142,15 @@ class SearchItem(Contract):
     title: str = Field(min_length=1, max_length=300)
     url: str = Field(min_length=1, max_length=2048)
     snippet: str | None = Field(default=None, max_length=1000)
-    published_at: str | None = Field(default=None, max_length=40)
+    published_at: str | None = Field(
+        default=None,
+        max_length=40,
+        description=(
+            "ISO 8601, when the provider supplies a date. Null when it supplies none, "
+            "or a relative label such as '2 days ago', which is reported as unknown "
+            "rather than guessed at. Never treat null as recent or old."
+        ),
+    )
 
 
 class SearchResponse(Contract):
@@ -232,6 +240,22 @@ def valid_web_url(value: object) -> bool:
     except (ValueError, UnicodeError):
         return False
     return True
+
+
+def publication_date(value: object) -> str | None:
+    """Normalize an upstream publication label, or report it as unknown.
+
+    Providers disagree about this field and some omit it entirely. Only an ISO
+    8601 value is accepted; a relative label such as "2 days ago" is not a date
+    and is reported as unknown rather than guessed at.
+    """
+    if not isinstance(value, str) or len(value) > 40:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.date().isoformat() if len(value) == 10 else parsed.isoformat()
 
 
 class _TextParser(HTMLParser):

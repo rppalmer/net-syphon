@@ -7,7 +7,7 @@ process, one set of private log files. Favor clear, simple, maintainable Python.
 ## Read First
 
 - Read `ARCHITECTURE.md` before changing the call path, the audit boundary,
-  provider behavior, or project structure. Its **"The rules"** section lists seven
+  provider behavior, or project structure. Its **"The rules"** section lists eight
   invariants. Breaking one is a bug, not a trade-off. Do not restate them
   elsewhere — link to them.
 - Read `docs/threat-model.md` before changing anything that touches the network,
@@ -65,8 +65,13 @@ description tells consumers not to put secrets in a query.
 
 ## Standing Rules
 
-- `server.py` carries zero logic. It defines schemas and delegates. Behavior lives
-  in `service.py`, the provider modules, and `policy.py`.
+- Both adapters carry zero logic. `server.py` defines tool schemas and delegates;
+  `cli.py` parses arguments and formats output. Behavior lives in `service.py`,
+  the provider modules, `policy.py` and `diagnostics.py`.
+- `doctor` reports and never repairs. It creates no file and no directory, reads
+  no audit event contents, and its connectivity checks refuse to run when the
+  audit is unwritable, exactly as the server refuses. If you add a check, add it
+  to `diagnostics.py` and keep it read-only.
 - Every tool body runs through `SearchService.call()`. Nothing reaches a provider
   unaudited, including each page of a batch.
 - The audit write happens **before** the network request, and is flushed to disk.

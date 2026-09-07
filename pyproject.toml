@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-net-syphon = "net_syphon.server:main"
+net-syphon = "net_syphon.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/net_syphon"]

@@ -102,7 +102,62 @@ and all tools and errors come through correctly. Re-check when
 
 ---
 
+## Phase 4 — Operator diagnostics ✅ done (2026-09-07)
+
+### T10 · `net-syphon doctor` — ✅ **done**
+
+A CLI subcommand, not an MCP tool. Diagnosing a server that will not start is the
+one thing you cannot do through that server, and a CLI is also outside rule 1, so
+it can name providers plainly where that helps an operator.
+
+Checks configuration directory and dotenv ownership and mode, which capabilities
+are enabled and which setting each missing one needs, audit directory health,
+daily-cap headroom and retention state. `--connect` additionally makes one real
+request per configured capability and spends one hosted request.
+
+It creates nothing and repairs nothing, which is now invariant 8. Connectivity
+refuses to run when the audit is unwritable, matching the server's own rule.
+
+### T11 · Two small corrections — ✅ **done**
+
+`publication_date` moved from `searxng.py` to `contracts.py`, so retrieval stops
+importing another provider's private helper. `get_page` now bounds text
+extraction with a character count rather than the 2 MiB response byte cap.
+
+---
+
 ## Open work
+
+### T12 · `partial` over-reports on the ordinary search path — **open**
+
+Confirmed on 2026-09-07 from an ORIS evaluation observation. A plain search
+returned `partial: true` alongside a full set of results, while a news search
+returned `partial: false`.
+
+`searxng._normalize` validates every result in the payload, and SearXNG returns
+far more than `max_results`. A malformed entry beyond the requested limit is
+counted as rejected even though it would never have been returned, so `partial`
+reports a loss the consumer did not suffer. Firecrawl does not show this because
+`limit` is sent upstream and the payload is already about the right size.
+
+The fix is to stop scanning once enough results are collected, and to treat a
+response as partial only when an engine failed or the results actually came up
+short. Held back deliberately: ORIS has a live evaluation in flight and this
+changes what it observes.
+
+### T13 · News publication dates — **open**
+
+`published_at` is populated from the provider's date field and accepts ISO 8601
+only. A relative label such as "2 days ago" is reported as unknown rather than
+guessed at, and the schema now says so.
+
+Whether Firecrawl supplies a usable date on news results is unverified. The live
+work in T7 answers it. If dates arrive in a different well-defined format, accept
+that format. If they are structurally absent, say so in the tool description
+rather than leaving a consumer to infer it from empty fields.
+
+Page retrieval carries `retrieved_at` but nothing about publication. Surfacing a
+publication date from the document itself is a candidate, not committed work.
 
 ### T7 · Live Firecrawl verification — **open**
 
@@ -134,9 +189,6 @@ integration does not reconfigure the running service.
 
 Ideas kept for later evaluation. None is approved.
 
-- **Operator diagnostics.** A `doctor` command for configuration, permissions,
-  audit availability and explicit connectivity checks with actionable errors.
-  It would become the second protocol adapter, and the no-logic rule applies to it.
 - **Small-model-friendly retrieval.** Bounded text with useful headings, clear
   truncation, and possibly section selection. Summarization stays in ORIS.
 - **Language filtering** on search, if real usage needs it.

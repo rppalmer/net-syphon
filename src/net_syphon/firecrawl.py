@@ -20,10 +20,11 @@ from net_syphon.contracts import (
     SearchItem,
     SearchRequest,
     plain_text,
+    publication_date,
     valid_web_url,
 )
 from net_syphon.policy import authorize_url
-from net_syphon.searxng import SearchBatch, _publication_date
+from net_syphon.searxng import SearchBatch
 
 API_ORIGIN = "https://api.firecrawl.dev"
 REQUEST_TIMEOUT = 25.0
@@ -169,7 +170,7 @@ async def search(
                     title=title,
                     url=item["url"],
                     snippet=plain_text(snippet, 1000) or None if isinstance(snippet, str) else None,
-                    published_at=_publication_date(item.get("date")),
+                    published_at=publication_date(item.get("date")),
                 )
             )
     audit.emit("normalized", str(call_id), result_count=len(results), rejected_count=rejected)
@@ -251,7 +252,8 @@ async def get_page(
                 ).split()
             )
         else:
-            text = plain_text(content, MAX_RESPONSE_BYTES)
+            # One character past the cap is all it takes to detect truncation below.
+            text = plain_text(content, max_characters + 1)
         if not text:
             raise SearchError(ErrorCode.NO_CONTENT)
         truncated = len(text) > max_characters
