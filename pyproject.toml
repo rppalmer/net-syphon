@@ -1,0 +1,68 @@
+[project]
+name = "net-syphon"
+version = "0.1.0"
+description = "Provider-neutral, audited web search and retrieval MCP server for ORIS"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx2>=2.12,<3",
+    "mcp>=2.2,<3",
+    "pydantic>=2.12,<3",
+    "pydantic-settings>=2.10,<3",
+    "python-dotenv>=1.2,<2",
+]
+
+[project.scripts]
+net-syphon = "net_syphon.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/net_syphon"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "docs/",
+    "README.md",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "TODO.md",
+    "pyproject.toml",
+    "uv.lock",
+    ".env.example",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.25,<5",
+    "pip-audit>=2.9,<3",
+    "pytest>=9.0.3,<10",
+    "pytest-asyncio>=1.1,<2",
+    "ruff>=0.12,<1",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "live: requires explicitly configured external services",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["experiments/"]
+
+[tool.ruff.lint]
+select = ["B", "C4", "E", "F", "I", "N", "PERF", "RUF", "S", "SIM", "UP"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S105", "S106"]
+
+[tool.ruff.format]
+quote-style = "double"

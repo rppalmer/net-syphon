@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.net-syphon/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+security-probe-report.json
+dist/
