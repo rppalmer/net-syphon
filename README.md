@@ -5,7 +5,7 @@ A stdio-only MCP server for web search and anonymous public-page retrieval:
 ```text
 net_syphon_search_web(query, max_results=5, search_category="general", include_domains=[],
                       time_range=None, start_date=None, end_date=None)
-net_syphon_get_pages(urls)
+net_syphon_get_pages(urls, max_characters=20000)
 ```
 
 Search returns links in the provider's order, and optional previews, not verified evidence. Retrieval
@@ -112,8 +112,11 @@ because egress is disabled in that state.
 - Retrieval supports public HTTP port 80 and HTTPS port 443, HTML and plain text only.
   It preflights DNS but does not connect to page servers locally. Hosted redirects
   remain the provider's responsibility. A final URL is provider-reported, or null.
-- One page returns at most 20,000 characters. Batches accept 1–5 URLs sequentially,
-  preserve per-URL success/errors, and share 40,000 characters equally. Deadlines:
+- Every page in a batch gets the same allowance, whatever the batch size. It defaults
+  to 20,000 characters and `max_characters` moves it between 1,000 and 50,000. Raise it
+  to read one page deeply; lower it to survey several cheaply. A longer page comes back
+  with `truncated` set. Batches accept 1–5 URLs sequentially and preserve per-URL
+  success and errors. Deadlines:
   SearXNG 15 seconds; hosted request 25; individual retrieval 40; batch 180.
   Already completed pages survive a batch deadline. Response caps are 1 MiB for
   SearXNG and 2 MiB for hosted requests, including decompressed data.

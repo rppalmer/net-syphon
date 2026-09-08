@@ -11,6 +11,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# The retrieval numbers live here and nowhere else. The ceiling is what a
+# response may carry, so it is enforced on the request rather than discovered
+# when the response fails to build. Measured on 2026-09-08: across nine real
+# pages the median was 21,000 characters, so 20,000 answers an ordinary page
+# and the ceiling covers all but the longest reference articles.
+MAX_BATCH_PAGES = 5
+DEFAULT_PAGE_CHARACTERS = 20000
+MAX_PAGE_CHARACTERS = 50000
+
 
 class ErrorCode(StrEnum):
     INVALID_INPUT = "invalid_input"
@@ -170,7 +179,17 @@ class ErrorResponse(Contract):
 
 
 class PagesRequest(Contract):
-    urls: list[str] = Field(min_length=1, max_length=5)
+    urls: list[str] = Field(min_length=1, max_length=MAX_BATCH_PAGES)
+    max_characters: int = Field(
+        default=DEFAULT_PAGE_CHARACTERS,
+        ge=1000,
+        le=MAX_PAGE_CHARACTERS,
+        description=(
+            "Characters to keep from each page, independent of how many pages are "
+            "requested. Raise it to read one page deeply, lower it to survey several "
+            "without spending context. A page longer than this is reported as truncated."
+        ),
+    )
 
     @field_validator("urls")
     @classmethod
@@ -189,7 +208,7 @@ class PageResponse(Contract):
         description="Reported destination, not an independently observed redirect chain.",
     )
     title: str = Field(max_length=300)
-    text: str = Field(min_length=1, max_length=20000)
+    text: str = Field(min_length=1, max_length=MAX_PAGE_CHARACTERS)
     media_type: Literal["text/html", "text/plain", "application/xhtml+xml"]
     retrieved_at: datetime
     truncated: bool
@@ -197,7 +216,7 @@ class PageResponse(Contract):
 
 
 class PageOutcome(Contract):
-    index: int = Field(ge=1, le=5)
+    index: int = Field(ge=1, le=MAX_BATCH_PAGES)
     page: PageResponse | None = None
     error: ErrorResponse | None = None
 
@@ -210,7 +229,7 @@ class PageOutcome(Contract):
 
 class PagesResponse(Contract):
     call_id: UUID
-    results: list[PageOutcome] = Field(min_length=1, max_length=5)
+    results: list[PageOutcome] = Field(min_length=1, max_length=MAX_BATCH_PAGES)
     partial: bool
 
 

@@ -56,9 +56,13 @@ class SearchService:
             )
 
     async def _get_pages(self, request: PagesRequest, key: str, call_id: UUID) -> PagesResponse:
-        """Preserve completed results when a later page exhausts the batch budget."""
+        """Preserve completed results when a later page exhausts the batch deadline.
+
+        Every page gets the allowance the caller asked for. Dividing one total
+        across the batch made a wider search silently buy a shallower read of
+        each result, which is a trade only the caller can judge.
+        """
         outcomes = []
-        character_limit = min(20000, 40000 // len(request.urls))
         deadline = time.monotonic() + BATCH_TIMEOUT
         for index, url in enumerate(request.urls, 1):
             child_id = uuid4()
@@ -76,7 +80,7 @@ class SearchService:
                         self.audit,
                         child_id,
                         self.clock,
-                        max_characters=character_limit,
+                        max_characters=request.max_characters,
                         transport=self.transport,
                     )
                 outcome = PageOutcome(index=index, page=page)

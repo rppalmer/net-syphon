@@ -216,9 +216,25 @@ be owned, regular, single-link, and mode `0600`. Symlinks are refused. A
 repository-local `.env` is never read, because the checkout is under version
 control and an MCP host chooses the working directory.
 
-Operational numbers are constants, not settings. Deadlines, response caps and
-character limits live in code. Nobody tunes a request deadline on a personal
-tool, and a wrong default deserves a commit.
+Operational numbers are constants, not settings. Deadlines and response caps live
+in code. Nobody tunes a request deadline on a personal tool, and a wrong default
+deserves a commit.
+
+How much page text a caller can afford is the one exception, and it is not an
+operator setting. It depends on the consumer's own context budget, which this
+server cannot see. So `max_characters` is a request argument with a default and a
+hard ceiling, the same shape as Net-Razor's `max_chars`.
+
+Both retrieval numbers are defined once, in `contracts.py`. The ceiling bounds the
+request, not just the response, so an impossible value is refused at validation
+instead of failing when the response is built. Neither `service.py` nor
+`firecrawl.py` contains a character number.
+
+The batch used to divide one total across its pages. That made a wider search
+silently buy a shallower read of each result, and it forced a breadth-versus-depth
+trade that only the caller can judge. Nine real pages measured on 2026-09-08 had a
+median of 21,000 characters, so the old 8,000 a five-page batch allowed kept about
+a quarter of the text.
 
 ## Deliberate non-goals
 

@@ -8,7 +8,12 @@ import httpx2 as httpx
 import pytest
 from pydantic import ValidationError
 
-from net_syphon.contracts import ErrorResponse, SearchRequest
+from net_syphon.contracts import (
+    DEFAULT_PAGE_CHARACTERS,
+    MAX_PAGE_CHARACTERS,
+    ErrorResponse,
+    SearchRequest,
+)
 from net_syphon.service import SearchService
 
 
@@ -133,9 +138,8 @@ async def test_page_safe_payload_and_plain_text(tmp_path, monkeypatch):
     assert "test-key" not in logs and "Heading" not in logs and "8.8.8.8" not in logs
 
 
-@pytest.mark.asyncio
-async def test_batch_keeps_order_and_limits_total_text(tmp_path, monkeypatch):
-    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+def _long_page(characters):
+    """A transport that always answers with more text than any allowance permits."""
 
     def respond(request):
         return httpx.Response(
@@ -143,13 +147,19 @@ async def test_batch_keeps_order_and_limits_total_text(tmp_path, monkeypatch):
             json={
                 "success": True,
                 "data": {
-                    "html": "<p>" + "a" * 30000 + "</p>",
+                    "html": "<p>" + "a" * characters + "</p>",
                     "metadata": {"statusCode": 200, "contentType": "text/html"},
                 },
             },
         )
 
-    service = SearchService(tmp_path / "private", transport=httpx.MockTransport(respond))
+    return httpx.MockTransport(respond)
+
+
+@pytest.mark.asyncio
+async def test_batch_keeps_order_and_reports_blocked_pages(tmp_path, monkeypatch):
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    service = SearchService(tmp_path / "private", transport=_long_page(30000))
     result = await service.call(
         {"urls": ["https://8.8.8.8/", "http://127.0.0.1/", "https://1.1.1.1/"]},
         tool_name="net_syphon_get_pages",
@@ -158,7 +168,63 @@ async def test_batch_keeps_order_and_limits_total_text(tmp_path, monkeypatch):
     assert result.partial is True
     assert result.results[1].error.code.value == "policy_blocked"
     assert result.results[0].page.requested_url == "https://8.8.8.8/"
-    assert sum(len(item.page.text) for item in result.results if item.page) <= 40000
+
+
+@pytest.mark.asyncio
+async def test_page_allowance_does_not_shrink_as_the_batch_grows(tmp_path, monkeypatch):
+    """Asking for more pages must not quietly buy less of each one."""
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    service = SearchService(tmp_path / "private", transport=_long_page(90000))
+    urls = ["https://8.8.8.8/", "https://1.1.1.1/", "https://9.9.9.9/", "https://8.8.4.4/"]
+
+    lengths = []
+    for count in (1, len(urls)):
+        result = await service.call({"urls": urls[:count]}, tool_name="net_syphon_get_pages")
+        assert not isinstance(result, ErrorResponse), result
+        lengths.append({len(item.page.text) for item in result.results})
+
+    assert lengths[0] == lengths[1] == {DEFAULT_PAGE_CHARACTERS}
+
+
+@pytest.mark.asyncio
+async def test_caller_may_raise_its_own_page_allowance(tmp_path, monkeypatch):
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    service = SearchService(tmp_path / "private", transport=_long_page(90000))
+    result = await service.call(
+        {"urls": ["https://8.8.8.8/"], "max_characters": MAX_PAGE_CHARACTERS},
+        tool_name="net_syphon_get_pages",
+    )
+    assert not isinstance(result, ErrorResponse), result
+    page = result.results[0].page
+    assert len(page.text) == MAX_PAGE_CHARACTERS
+    assert page.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_caller_may_lower_its_own_page_allowance(tmp_path, monkeypatch):
+    """A consumer with little context to spare can ask for less than the default."""
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    service = SearchService(tmp_path / "private", transport=_long_page(90000))
+    result = await service.call(
+        {"urls": ["https://8.8.8.8/"], "max_characters": 1000},
+        tool_name="net_syphon_get_pages",
+    )
+    assert not isinstance(result, ErrorResponse), result
+    assert len(result.results[0].page.text) == 1000
+
+
+@pytest.mark.parametrize("requested", [999, MAX_PAGE_CHARACTERS + 1, 0, -1])
+@pytest.mark.asyncio
+async def test_page_allowance_outside_the_contract_is_refused(tmp_path, monkeypatch, requested):
+    """The ceiling is enforced on the way in, not discovered on the way out."""
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    service = SearchService(tmp_path / "private", transport=_long_page(90000))
+    result = await service.call(
+        {"urls": ["https://8.8.8.8/"], "max_characters": requested},
+        tool_name="net_syphon_get_pages",
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.code.value == "invalid_input"
 
 
 @pytest.mark.asyncio

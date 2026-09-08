@@ -24,9 +24,9 @@ Tavily addition, no fallback, no local browser, no deferred roadmap features.
       media type, truncation flag and a SHA-256 of the returned text. Disable the
       provider cache, skipped TLS checks, enhanced proxy fallback, actions and
       PDF parsing.
-- [x] Batch at most five pages sequentially with ordered independent outcomes,
-      20,000 characters per page and 40,000 per batch, and a 180-second batch
-      deadline. A single page gets 40 seconds including its URL checks.
+- [x] Batch at most five pages sequentially with ordered independent outcomes and
+      a 180-second batch deadline. A single page gets 40 seconds including its URL
+      checks. The per-batch character total was removed by T14.
 - [x] Allowlisted search-failure diagnostics with no raw provider logging.
 - [x] Fixture tests for malformed input, routing, safe payloads, URL policy,
       response limits, partial batches, cancellation and audit failure.
@@ -238,6 +238,53 @@ integration does not reconfigure the running service.
 
 ---
 
+### T14 · The page allowance was divided across the batch — ✅ **done**
+
+Retrieval divided 40,000 characters across the batch, so a five-page request kept
+8,000 of each page. Asking for more pages silently bought less of each one, which
+is a breadth-versus-depth trade only the caller can judge.
+
+Measured on 2026-09-08 against nine real pages, with the cap lifted:
+
+| Page | Characters |
+| --- | --- |
+| Wikipedia — Transformer architecture | 105,969 |
+| Python docs — asyncio tasks | 45,172 |
+| PEP 8 | 44,477 |
+| MCP docs — architecture | 26,809 |
+| Wikipedia — retrieval-augmented generation | 21,079 |
+| Cloudflare engineering post | 12,928 |
+| BBC technology index | 10,138 |
+| uv docs — projects guide | 6,621 |
+| arXiv abstract | 4,521 |
+
+Median 21,000, after main-content stripping. At 8,000 a consumer kept 24% of the
+text and two of nine pages whole. At 20,000 it keeps 48%. At 50,000, 80%.
+
+Fixed by giving every page the same allowance regardless of batch size, defaulting
+to 20,000, with `max_characters` letting a caller move it between 1,000 and 50,000.
+That is Net-Razor's `max_chars` shape, so the two servers now agree on how a caller
+states a text budget.
+
+The numbers were also in three places inside this repo: the divided budget, the
+retrieval default, and the response model's own cap. They are now defined once in
+`contracts.py`, and the ceiling bounds the request, so an impossible value is
+refused at validation rather than crashing the response build. The batch size of
+five had the same problem in three places and was collapsed with it.
+
+The deferred note said to revisit this when a case actually failed at 8,000. No
+case failed. The measurement is what changed the decision: keeping a quarter of
+the text was not a deliberate choice anybody made, it was arithmetic nobody had
+looked at.
+
+ORIS was told and is handling its own side. It owns its context budget, which is
+the point of making the allowance an argument: this server should not be guessing
+what a consumer can afford. The one number worth passing on is that five pages at
+the 50,000 ceiling is 250,000 characters in a single tool result, roughly 62,000
+tokens. That ceiling is for reading a page or two deeply, not for five-way breadth.
+
+---
+
 ## Not committed work
 
 Ideas kept for later evaluation. None is approved.
@@ -245,21 +292,6 @@ Ideas kept for later evaluation. None is approved.
 - **Small-model-friendly retrieval.** Bounded text with useful headings, clear
   truncation, and possibly section selection. Summarization stays in ORIS.
 - **Language filtering** on search, if real usage needs it.
-- **A larger batch character budget.** Raised on 2026-09-07 and deliberately not
-  acted on. Net-Syphon divides 40,000 characters across the batch, so five URLs is
-  exactly 8,000 each, which is exactly what ORIS keeps per page. There is no slack
-  left and `truncated` is true on essentially every substantial page.
-
-  The argument for raising it is that one total forces the breadth-versus-depth
-  trade on every consumer, and only the consumer knows which it needs. The argument
-  against is that nothing has failed at 8,000: ORIS measured four evaluation cases
-  at five pages and all answered well, and the one case that was failing was fixed
-  by something else. Raising this alone would also buy nothing, because ORIS cuts
-  at 8,000 independently — both numbers have to move together.
-
-  Revisit when there is a case that actually fails at 8,000. Until then this is
-  speculation, and the simplicity gate says not to build it.
-
 - **Usage safeguards.** Operator-set request allowances and rate-limit cooldowns,
   without automatic retries or fallback. Daily limits would need to survive a
   restart. The 2026-09-07 probe found that Firecrawl reports `creditsUsed` on a

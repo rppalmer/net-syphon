@@ -198,7 +198,7 @@ async def get_page(
     call_id: UUID,
     clock: Clock,
     *,
-    max_characters: int = 20000,
+    max_characters: int,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> PageResponse:
     """Submit an anonymous public URL with explicit safe overrides and return only text."""
