@@ -140,11 +140,22 @@ rejected even though it would never have been returned, so `partial` reported a
 loss the caller did not suffer. Firecrawl showed it less because `limit` goes
 upstream and its payload is already about the right size.
 
-Both paths now stop scanning at the limit, and a response is partial only when
-the search service reported engine failures or the results genuinely came up
-short. The README says what the flag means. This is a contract change: a consumer
-that treated `partial` as "the payload contained junk" will see it far less often,
-which is the point.
+A response is now partial when the search service reported engine failures, or
+when entries were rejected **and** that left the results short of the limit. Those
+are not two independent conditions: upstream simply having fewer results than you
+asked for is not a loss and does not set the flag. The README says what it means.
+
+This is a contract change. A consumer that treated `partial` as "the payload
+contained junk" will see it far less often, which is the point.
+
+**Correction, same day.** The first version stopped scanning the payload at the
+limit. That fixed `partial` but blinded the audit: `rejected_count` only saw junk
+found before the results filled up, so an upstream returning garbage after a few
+good hits would have been recorded as clean. `partial` and `rejected_count` answer
+different questions and both deserve an answer. Scanning now covers the whole
+payload for the audit, and only what the caller could still have received decides
+`partial`. Raised in review by the ORIS session; the hosted path also gained the
+partial tests it should have had from the start.
 
 ### T13 · News publication dates — ✅ **done**
 
@@ -234,6 +245,21 @@ Ideas kept for later evaluation. None is approved.
 - **Small-model-friendly retrieval.** Bounded text with useful headings, clear
   truncation, and possibly section selection. Summarization stays in ORIS.
 - **Language filtering** on search, if real usage needs it.
+- **A larger batch character budget.** Raised on 2026-09-07 and deliberately not
+  acted on. Net-Syphon divides 40,000 characters across the batch, so five URLs is
+  exactly 8,000 each, which is exactly what ORIS keeps per page. There is no slack
+  left and `truncated` is true on essentially every substantial page.
+
+  The argument for raising it is that one total forces the breadth-versus-depth
+  trade on every consumer, and only the consumer knows which it needs. The argument
+  against is that nothing has failed at 8,000: ORIS measured four evaluation cases
+  at five pages and all answered well, and the one case that was failing was fixed
+  by something else. Raising this alone would also buy nothing, because ORIS cuts
+  at 8,000 independently — both numbers have to move together.
+
+  Revisit when there is a case that actually fails at 8,000. Until then this is
+  speculation, and the simplicity gate says not to build it.
+
 - **Usage safeguards.** Operator-set request allowances and rate-limit cooldowns,
   without automatic retries or fallback. Daily limits would need to survive a
   restart. The 2026-09-07 probe found that Firecrawl reports `creditsUsed` on a

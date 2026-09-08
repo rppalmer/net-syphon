@@ -416,3 +416,83 @@ async def test_news_relative_dates_reach_the_consumer_as_absolute_dates(tmp_path
         "2026-09-04",
         None,
     ]
+
+
+def news_payload(items):
+    return httpx.MockTransport(
+        lambda request: httpx.Response(200, json={"success": True, "data": {"news": items}})
+    )
+
+
+@pytest.mark.asyncio
+async def test_hosted_search_junk_past_the_limit_is_not_partial(tmp_path, monkeypatch):
+    """The hosted path must mean the same thing by `partial` as the ordinary one."""
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    transport = news_payload(
+        [{"title": f"Good {i}", "url": f"https://ok{i}.test/"} for i in range(3)]
+        + [{"title": "Junk", "url": "javascript:alert(1)"}, {"title": "", "url": "https://b.test/"}]
+    )
+
+    result = await SearchService(tmp_path / "private", transport=transport).call(
+        {"query": "x", "search_category": "news", "max_results": 3}
+    )
+
+    assert len(result.results) == 3
+    assert result.partial is False
+
+
+@pytest.mark.asyncio
+async def test_hosted_search_reports_partial_when_it_comes_up_short(tmp_path, monkeypatch):
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    transport = news_payload(
+        [{"title": "Good", "url": "https://ok.test/"}, {"title": "Junk", "url": "not-a-url"}]
+    )
+
+    result = await SearchService(tmp_path / "private", transport=transport).call(
+        {"query": "x", "search_category": "news", "max_results": 5}
+    )
+
+    assert len(result.results) == 1
+    assert result.partial is True
+
+
+@pytest.mark.asyncio
+async def test_hosted_search_audit_counts_rejections_past_the_limit(tmp_path, monkeypatch):
+    """Upstream health stays visible on this path too, even when nothing was lost."""
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    transport = news_payload(
+        [{"title": f"Good {i}", "url": f"https://ok{i}.test/"} for i in range(2)]
+        + [{"title": "Junk", "url": "not-a-url"}]
+    )
+
+    result = await SearchService(tmp_path / "private", transport=transport).call(
+        {"query": "x", "search_category": "news", "max_results": 2}
+    )
+
+    normalized = [
+        json.loads(line)
+        for path in (tmp_path / "private/logs").glob("*.jsonl")
+        for line in path.read_text().splitlines()
+        if json.loads(line)["event"] == "normalized"
+    ]
+    assert result.partial is False
+    assert normalized[0]["rejected_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_off_domain_results_count_as_a_loss_when_they_leave_it_short(tmp_path, monkeypatch):
+    """A domain restriction that the provider ignores is a real loss, not noise."""
+    monkeypatch.setenv("NET_SYPHON_FIRECRAWL_API_KEY", "test-key")
+    transport = news_payload(
+        [
+            {"title": "Wanted", "url": "https://news.example.org/a"},
+            {"title": "Elsewhere", "url": "https://other.test/b"},
+        ]
+    )
+
+    result = await SearchService(tmp_path / "private", transport=transport).call(
+        {"query": "x", "search_category": "news", "include_domains": ["example.org"]}
+    )
+
+    assert [item.url for item in result.results] == ["https://news.example.org/a"]
+    assert result.partial is True

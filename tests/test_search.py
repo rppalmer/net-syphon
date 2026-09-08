@@ -305,3 +305,33 @@ async def test_a_genuine_shortfall_is_still_reported_as_partial(tmp_path):
 
     assert len(batch.results) == 1
     assert batch.partial is True
+
+
+@pytest.mark.asyncio
+async def test_audit_counts_every_rejection_even_past_the_limit(tmp_path):
+    """ "What did the caller lose" and "how healthy is upstream" are different questions.
+
+    `partial` answers the first. The audit's rejected_count answers the second, and
+    it is the only diagnostic channel this server has, so it must see the whole
+    payload even when the caller lost nothing.
+    """
+    response, _ = upstream(
+        {
+            "results": [{"title": f"Good {i}", "url": f"https://ok{i}.example/"} for i in range(5)]
+            + [
+                {"title": "Junk", "url": "javascript:alert(1)"},
+                {"title": "", "url": "https://notitle.example/"},
+            ],
+            "unresponsive_engines": [],
+        }
+    )
+    batch = await fetch(tmp_path, lambda request: response, {"query": "x", "max_results": 5})
+
+    normalized = [
+        json.loads(line)
+        for path in (tmp_path / "private/logs").glob("*.jsonl")
+        for line in path.read_text().splitlines()
+        if json.loads(line)["event"] == "normalized"
+    ]
+    assert batch.partial is False, "the caller asked for five and got five"
+    assert normalized[0]["rejected_count"] == 2, "upstream health must still be visible"

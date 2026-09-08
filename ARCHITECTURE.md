@@ -166,6 +166,14 @@ server prunes nothing.
 Batch retrieval gives each page its own `call_id` and links it to the batch
 through `parent_call_id`.
 
+`partial` and the audit's `rejected_count` answer different questions and must not
+be collapsed into one count. `partial` is for the caller: did this response lose
+something you asked for. `rejected_count` is for the operator: how much junk is
+upstream producing. A payload can be full of malformed entries past the requested
+limit, costing the caller nothing while saying a lot about the service. So result
+normalization scans the whole payload for the audit, and only rejections that left
+the caller short set `partial`.
+
 ## Adding a provider
 
 Dispatch is a plain `if` in `service.py`, and there is no provider protocol. That

@@ -156,8 +156,6 @@ async def search(
     results = []
     rejected = 0
     for item in raw_results:
-        if len(results) >= request.max_results:
-            break
         if not isinstance(item, dict) or not valid_web_url(item.get("url")):
             rejected += 1
             continue
@@ -170,6 +168,10 @@ async def search(
         title = plain_text(item.get("title", ""), 300) if isinstance(item.get("title"), str) else ""
         if not title:
             rejected += 1
+            continue
+        # Same reasoning as the SearXNG path: the audit sees the whole payload,
+        # `partial` sees only what the caller could still have received.
+        if len(results) >= request.max_results:
             continue
         snippet = item.get("snippet" if source == "news" else "description")
         results.append(
