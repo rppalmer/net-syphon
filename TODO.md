@@ -183,15 +183,33 @@ and the benefit is occasional.
 
 ---
 
-### T7 · Live Firecrawl verification — **open**
+### T7 · Live Firecrawl verification — ✅ **done** (net-syphon side)
 
-Run live search and retrieval with an operator-configured key. Do not copy a key
-from ORIS. Confirm media-type metadata, date coverage and real retrieval
-behavior. Do not loosen any restriction if the live contract differs from the
-fixtures — report the difference instead.
+Run against the operator-configured key on 2026-09-07 and 2026-09-08. Every
+assumption the fixtures encoded from the API documentation is now checked against
+the real service, and four `--live` tests keep it that way.
 
-The SearXNG live contract passed on 2026-09-06 after operator maintenance. See
-[docs/search-failure-followup.md](docs/search-failure-followup.md).
+Confirmed:
+
+- **Media-type metadata exists and is usable.** `metadata.contentType` is present
+  and parses, so retrieval does not fail closed. This was the largest risk: the
+  code rejects anything outside three media types, so a missing or differently
+  shaped field would have failed every single page retrieval.
+- **`metadata.statusCode` is an integer**, as the code requires.
+- **Search response keying is right.** Results arrive under `data["web"]` and
+  `data["news"]` as the code expects, with `success: true`.
+- **Warnings are not routine.** A normal search returns `warning: false`, so
+  treating a warning as a hard failure does not break ordinary use.
+- **The date filter is honoured.** `tbs: qdr:d` genuinely constrains results:
+  day-filtered news came back entirely from the current day while an unfiltered
+  search of the same query reached two days back. Net-syphon was not claiming a
+  constraint it failed to apply.
+- **Retrieval works end to end**, returning bounded text with the expected media
+  type.
+
+Found and fixed along the way: news dates arrive as relative labels. See T13.
+
+What remains is ORIS-side acceptance, which is T9, not this item.
 
 ### T8 · Watch the MCP major-version split — **open**
 

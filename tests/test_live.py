@@ -77,3 +77,42 @@ async def test_news_search_carries_usable_dates(capsys):
     assert result.results, "news search returned nothing to judge"
     # Zero coverage is the regression this exists to catch.
     assert dated, "no news result carried a usable date; check the provider's date field"
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_relative_time_filter_actually_constrains_results(capsys):
+    """The hosted date filter is sent as provider syntax, so verify it is honoured.
+
+    If it were ignored, net-syphon would claim a date constraint it did not apply
+    and a consumer would trust it. Tolerates two days rather than one: a label of
+    "1 day ago" resolves to a date, so an item inside the window can read as
+    yesterday.
+    """
+    from datetime import UTC, datetime
+
+    from net_syphon.config import load_settings
+    from net_syphon.contracts import ErrorResponse
+    from net_syphon.service import SearchService
+
+    root = Path.home() / ".net-syphon"
+    if load_settings(root).firecrawl_api_key is None:
+        pytest.skip("Retrieval key not configured")
+
+    result = await SearchService(root).call(
+        {"query": "technology", "search_category": "news", "max_results": 5, "time_range": "day"}
+    )
+    if isinstance(result, ErrorResponse):
+        pytest.fail(f"{result.code.value}: {result.message}", pytrace=False)
+
+    now = datetime.now(UTC)
+    ages = [
+        (now - datetime.fromisoformat(item.published_at).replace(tzinfo=UTC)).days
+        for item in result.results
+        if item.published_at
+    ]
+    with capsys.disabled():
+        print(f"\n  day-filtered: {len(result.results)} results, ages in days: {ages}")
+    assert result.results, "day-filtered news returned nothing"
+    assert ages, "no dated result to judge the filter by"
+    assert max(ages) <= 2, f"day filter appears ignored; oldest result is {max(ages)} days old"
