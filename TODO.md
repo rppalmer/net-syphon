@@ -324,6 +324,62 @@ tokens. That ceiling is for reading a page or two deeply, not for five-way bread
 
 ---
 
+### T15 · The search result ceiling was set below what the index returns — ✅ **done**
+
+`max_results` allowed 1–10. The search index behind the ordinary path returns far
+more than that after deduplication, so the ceiling was discarding a tail the
+caller never got to judge. This is the same mistake T14 found in the page
+allowance, in the other tool: a number nobody had looked at recently, quietly
+deciding breadth on the caller's behalf.
+
+Measured on 2026-09-19 against live results: a result costs about 250 characters
+once the title and snippet caps apply. Five results is roughly 330 tokens, thirty
+is roughly 2,000 — about a third of one page retrieval at its default allowance.
+The cost was never the reason for the limit.
+
+The ceiling is now 30 and the default stays at 5. Both are named constants in
+`contracts.py` beside the page numbers, so the search and retrieval budgets are
+stated in one place and in the same shape. The field carries a description saying
+that a short list is not a partial response, because upstream holding fewer
+results than requested is not a loss and does not set `partial`.
+
+Verified against the hosted provider before raising it: a limit of 30 is accepted
+and answered normally, so the ceiling does not break the filtered and news path.
+The advertised MCP schema reports `maximum: 30`, checked over real stdio.
+
+Quality falls off in the tail. At 30 the last few results drift off-topic, which
+is exactly why the choice belongs to the consumer rather than to a default here.
+
+### T16 · Search engine configuration was drifting from the code — ✅ **done**
+
+Not a change to this repository, but it decides what the ordinary search path
+returns, so it belongs in the record.
+
+The instance was running a full copy of the shipped default configuration, taken
+at install time and edited in place. The code had moved on. Six engines no longer
+existed under the names the file used and failed to load on every start, and the
+file could never pick up an upstream engine fix. It is now a short override on
+top of `use_default_settings`, so engine definitions come from the installed
+version.
+
+DuckDuckGo was serving a CAPTCHA on roughly 40% of queries from this address and
+failed on every parallel fan-out, which set `partial` on responses that had lost
+nothing: on 2026-09-13, ten of eleven searches were flagged while returning the
+full five results with nothing rejected. It is disabled. Bing, Yep and Qwant were
+added, and Wikidata, a currency converter and three translators were dropped from
+the general category because they cannot contribute to a text search. Mwmbl was
+tried and dropped: it answers in 0.2s alone but times out inside the fan-out.
+
+Measured before and after on the same kind of query: 28–45 results with one engine
+dead every time, against 44–65 in steady state with roughly 12% of results merged
+across engines by the index's own deduplication. This server adds no deduplication
+of its own and should not; it keeps the merged order it is given.
+
+`partial` is now driven by whichever engine is rate-limited rather than by a
+permanently broken one. That is a smaller problem but the same question T12 asked:
+whether one engine of seven failing, when the caller still received every result
+it asked for, is a loss worth reporting. Left open deliberately.
+
 ---
 
 ## Not committed work

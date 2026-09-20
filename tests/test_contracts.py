@@ -3,13 +3,23 @@
 import pytest
 from pydantic import ValidationError
 
+from net_syphon.contracts import DEFAULT_SEARCH_RESULTS, MAX_SEARCH_RESULTS
+
 
 def test_default_request_trims_query_and_limits_results():
     from net_syphon.contracts import SearchRequest
 
     request = SearchRequest.model_validate({"query": "  python typing  "})
     assert request.query == "python typing"
-    assert request.max_results == 5
+    assert request.max_results == DEFAULT_SEARCH_RESULTS
+
+
+def test_accepts_the_whole_documented_result_range():
+    from net_syphon.contracts import SearchRequest
+
+    for count in (1, DEFAULT_SEARCH_RESULTS, MAX_SEARCH_RESULTS):
+        request = SearchRequest.model_validate({"query": "python", "max_results": count})
+        assert request.max_results == count
 
 
 @pytest.mark.parametrize(
@@ -33,7 +43,10 @@ def test_default_request_trims_query_and_limits_results():
         {"query": "python <850"},
         {"query": "python <٣"},
         {"query": "python", "engine": "google"},
-        *[{"query": "python", "max_results": n} for n in (0, 11, True, 2.5, "3")],
+        *[
+            {"query": "python", "max_results": n}
+            for n in (0, MAX_SEARCH_RESULTS + 1, True, 2.5, "3")
+        ],
     ],
 )
 def test_rejects_invalid_or_provider_shaped_input(arguments):

@@ -99,7 +99,7 @@ because egress is disabled in that state.
 
 ## Operation
 
-- Queries allow 1–500 characters; result limits are integers from 1–10. Provider-control
+- Queries allow 1–500 characters; result limits are integers from 1–30. Provider-control
   modifiers are rejected. Discover the tool's schema for the complete contract.
 - Search accepts up to ten domain restrictions, a relative day/week/month/year, or
   paired ISO dates (start inclusive, end exclusive). Relative and absolute periods

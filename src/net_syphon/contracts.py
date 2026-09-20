@@ -20,6 +20,15 @@ MAX_BATCH_PAGES = 5
 DEFAULT_PAGE_CHARACTERS = 20000
 MAX_PAGE_CHARACTERS = 50000
 
+# The same reasoning applies to how many results a search may return: the caller
+# knows its context budget and this server does not. Measured on 2026-09-19, a
+# result costs about 250 characters once title and snippet are capped, so the
+# ceiling is roughly 7,500 characters, a third of one default page retrieval.
+# The default stays small because most questions are answered near the top of
+# the list, and every snippet is untrusted text on its way to a model.
+DEFAULT_SEARCH_RESULTS = 5
+MAX_SEARCH_RESULTS = 30
+
 
 class ErrorCode(StrEnum):
     INVALID_INPUT = "invalid_input"
@@ -84,7 +93,15 @@ class SearchRequest(Contract):
         max_length=500,
         description="Plain text; no control characters, bangs, language or timeout modifiers.",
     )
-    max_results: int = Field(default=5, ge=1, le=10)
+    max_results: int = Field(
+        default=DEFAULT_SEARCH_RESULTS,
+        ge=1,
+        le=MAX_SEARCH_RESULTS,
+        description=(
+            "How many results to return. Upstream may hold fewer, and a short "
+            "list is not a partial response."
+        ),
+    )
     search_category: Literal["general", "news"] = "general"
     include_domains: list[str] = Field(default_factory=list, max_length=10)
     time_range: Literal["day", "week", "month", "year"] | None = None
