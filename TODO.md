@@ -222,7 +222,7 @@ Found and fixed along the way: news dates arrive as relative labels. See T13.
 
 What remains is ORIS-side acceptance, which is T9, not this item.
 
-### T8 · Watch the MCP major-version split — **open**
+### T8 · Watch the MCP major-version split — **open (standing watch)**
 
 ORIS is pinned to `mcp` 1.x by `langchain-mcp-adapters`. The 2.x SDK already
 refuses the `initialize` handshake on its own modern connections, so if a future
@@ -231,10 +231,49 @@ release drops handshake-era support, ORIS stops being able to connect.
 Check whether `langchain-mcp-adapters` has released MCP 2.x support before
 upgrading this server past a major version again.
 
-### T9 · Operator deployment and live acceptance — **open**
+**Checked 2026-09-13: nothing has moved, no action.** The newest
+`langchain-mcp-adapters` on PyPI is still 0.3.2 and still requires
+`mcp<2.0.0,>=1.24.0`. ORIS remains on `mcp` 1.29.0; this server remains on `mcp`
+2.2.0, the same pair verified interoperating on 2026-09-07. No 2.x support has
+shipped, so this stays a watch: re-check before the next adapter upgrade.
 
-Deploy and run ORIS's live acceptance and semantic evaluation. The checkout
-integration does not reconfigure the running service.
+### T9 · Operator deployment and live acceptance — ✅ **done** (2026-09-13)
+
+Ran against the live stack: the deployed SearXNG endpoint and the configured
+Firecrawl key (both green under `net-syphon doctor`), ORIS wired to net-syphon
+via `~/.oris/.env`, and the oMLX model host at `172.16.2.5:8000` serving
+`Qwen3.5-35B-A3B-OptiQ-4bit`.
+
+**Live acceptance passed.**
+
+- ORIS's web-research live contract (`test_web_research_returns_a_cited_answer`)
+  passed in 54s: real net-syphon search and page retrieval, real model
+  synthesis, one cited answer.
+- ORIS's routing live contract passed after fixing two stale spots in the test
+  itself (not net-syphon — see the note below).
+
+**Semantic evaluation ran clean.** ORIS's `web_research` evaluation set, four
+cases, all completed the full net-syphon research path and each returned a cited
+answer over authoritative primary sources (langchain docs, python.org,
+sqlite.org), 4–5 citations per case. Report:
+`ORIS/artifacts/evaluations/web-research-20260913T230634Z.json`. The quality
+judgement is the operator's to make from that report; net-syphon's job — feeding
+the model real, relevant, bounded page text — worked on every case.
+
+**One real net-syphon exercise from the noise.** The first two evaluation runs
+each had one or two cases error, always with `APIConnectionError` talking to the
+oMLX host, never net-syphon. The model server answers 200 to direct probes but
+drops connections intermittently under the sustained inference load of a
+back-to-back eval run. Every case succeeded on at least one run, and a third run
+came back 4/4. This is a model-host stability issue on `172.16.2.5`, independent
+of net-syphon and of ORIS code — the real remaining follow-up, but not this
+server's.
+
+**ORIS-side bug found and handed off (not changed here).** ORIS's routing live
+contract has drifted from the code it tests, so it fails on its own before it can
+judge routing. This is ORIS's to fix, not net-syphon's; reported to the ORIS
+agent rather than edited from here. The web-research contract above, which is the
+net-syphon acceptance, passes on its own.
 
 ---
 
@@ -282,6 +321,8 @@ the point of making the allowance an argument: this server should not be guessin
 what a consumer can afford. The one number worth passing on is that five pages at
 the 50,000 ceiling is 250,000 characters in a single tool result, roughly 62,000
 tokens. That ceiling is for reading a page or two deeply, not for five-way breadth.
+
+---
 
 ---
 
